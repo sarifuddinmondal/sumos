@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advertisement</title>
+    <style>
+        /* Base styles */
+        body, html { margin: 0; padding: 0; background: #000; color: #fff; font-family: sans-serif; overflow: hidden; height: 100vh; width: 100vw; }
+        
+        #ad-wrapper { 
+            position: relative;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            border-radius: 12px;
+            overflow: hidden;
+            background: #111; /* A fallback background */
+            /* Sizing and positioning will be applied via JS */
+        }
+        
+        #ad-media { width: 100%; height: 100%; object-fit: contain; }
+        .ad-html-content { position: relative; width: 100%; height: 100%; border: none; }
+        .top-right-controls { position: absolute; top: 15px; right: 15px; display: flex; align-items: center; gap: 10px; z-index: 1000; }
+        #countdown { background: rgba(0,0,0,0.7); color: #fff; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; border: 2px solid #555; }
+        #next-ad-btn { background: #3b82f6; color: white; border: none; padding: 0 15px; height: 40px; border-radius: 20px; cursor: pointer; font-size: 16px; font-weight: bold; }
+        .fallback-text { text-align: center; color: #888; font-size: 18px; padding: 20px; width: 100%; height: 100%; display:flex; align-items:center; justify-content:center; flex-direction:column; }
+
+        /* Diagnostic Tools styles */
+        #diag-toggle { position: absolute; bottom: 10px; right: 10px; background: #4f46e5; color: white; border: none; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; font-size: 18px; font-weight: bold; z-index: 1001; opacity: 0.8; }
+        #diag-panel { display: none; position: absolute; top: 10px; left: 10px; right: 10px; bottom: 60px; background: rgba(20, 20, 30, 0.97); border: 1px solid #60a5fa; border-radius: 8px; padding: 20px; z-index: 1002; overflow-y: auto; font-family: monospace; }
+        #diag-panel h2 { color: #93c5fd; display: flex; justify-content: space-between; align-items: center;}
+        #diag-panel pre { background: #1f2937; padding: 1rem; border-radius: 8px; border: 1px solid #374151; white-space: pre-wrap; word-wrap: break-word; font-size: 14px; }
+        #copy-btn { background: #3b82f6; color: white; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div id="ad-wrapper">
+        {% if ad %}
+            {% if ad.get('ad_type') == 'project' and ad.get('display_html') %}
+                <div class="ad-html-content">{{ ad.get('display_html') | safe }}</div>
+            {% elif ad.get('ad_type') == 'html' and ad.get('ad_content_html') %}
+                <div class="ad-html-content">{{ ad.get('ad_content_html') | safe }}</div>
+            {% elif ad.get('ad_type') in ['image', 'video'] and ad.get('media_url') %}
+                {% if ad.get('ad_type') == 'image' %}
+                    <img id="ad-media" src="{{ ad.get('media_url') }}" alt="Advertisement">
+                {% else %}
+                    <video id="ad-media" src="{{ ad.get('media_url') }}" autoplay muted playsinline loop>Video not supported.</video>
+                {% endif %}
+            {% else %}
+                <div class="fallback-text">
+                    <h2>Ad Content Unavailable</h2>
+                    <p>The ad could not be displayed. Click the 'D' button for diagnostics.</p>
+                </div>
+            {% endif %}
+        {% else %}
+             <div class="fallback-text">No ad available to display at this moment.</div>
+        {% endif %}
+    </div>
+
+    <div class="top-right-controls">
+        <button id="next-ad-btn">Next Ad</button>
+        <div id="countdown"></div>
+    </div>
+
+    <!-- Diagnostic Tools -->
+    <button id="diag-toggle">D</button>
+    <div id="diag-panel">
+        <h2>Diagnostic Info <button id="copy-btn">Copy</button></h2>
+        <pre id="ad-data-pre">{{ ad | tojson(indent=2) | safe if ad else "No ad data was received from the server." }}</pre>
+    </div>
+
+    <script>
+        const NEXT_URL = "{{ next_url|safe }}";
+        const ad = {{ ad | tojson | safe if ad else 'null' }};
+        const currentSerial = ad ? ad.serial_number : 0;
+        let countdownVal = ad ? (ad.ad_duration || 15) : 5;
+        const countdownEl = document.getElementById('countdown');
+        if (countdownEl) countdownEl.textContent = countdownVal;
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const isTesting = urlParams.has('serial');
+
+        function redirectToNext() {
+            if (NEXT_URL && NEXT_URL !== '/' && !NEXT_URL.includes('adview')) {
+                window.location.href = NEXT_URL;
+            } else {
+                window.location.href = '/';
+            }
+        }
+        
+        if (!isTesting && ad) {
+            const countdownInterval = setInterval(() => {
+                countdownVal--;
+                if (countdownEl) countdownEl.textContent = countdownVal;
+                if (countdownVal <= 0) {
+                    clearInterval(countdownInterval);
+                    redirectToNext();
+                }
+            }, 1000);
+        } else if (isTesting) {
+             if(countdownEl) countdownEl.textContent = "Test";
+        } else {
+            setTimeout(redirectToNext, 5000);
+        }
+
+        // --- Button Logic ---
+        document.getElementById('next-ad-btn').addEventListener('click', () => {
+            const nextSerial = currentSerial + 1;
+            window.location.href = `/adview?serial=${nextSerial}&next=${encodeURIComponent(NEXT_URL)}`;
+        });
+
+        // --- Diagnostic Tools Logic ---
+        document.getElementById('diag-toggle').addEventListener('click', () => {
+            const panel = document.getElementById('diag-panel');
+            panel.style.display = panel.style.display === 'block' ? 'none' : 'block';
+        });
+
+        document.getElementById('copy-btn').addEventListener('click', () => {
+            const data = document.getElementById('ad-data-pre').textContent;
+            navigator.clipboard.writeText(data).then(() => {
+                const btn = document.getElementById('copy-btn');
+                btn.textContent = 'Copied!';
+                setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+            });
+        });
+        
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape' || e.key === 'Backspace') {
+                e.preventDefault();
+                redirectToNext();
+            }
+        });
+
+        // Apply dynamic styles for position and size
+        if (ad) {
+            const wrapper = document.getElementById('ad-wrapper');
+            document.body.style.padding = '20px';
+
+            // Sizing
+            const size = ad.ad_size || '100%x100%';
+            const [widthStr, heightStr] = size.split('x').map(s => s.trim());
+            
+            // If no unit is specified, default to %
+            let finalWidth = widthStr.match(/%|vw|vh|px|em|rem/) ? widthStr : `${widthStr}%`;
+            let finalHeight = heightStr.match(/%|vw|vh|px|em|rem/) ? heightStr : `${heightStr}%`;
+
+            const widthValue = parseFloat(finalWidth);
+            const heightValue = parseFloat(finalHeight);
+
+            if (finalWidth.endsWith('%') && widthValue < 20) {
+                finalWidth = '80%';
+            }
+            if (finalHeight.endsWith('%') && heightValue < 20) {
+                finalHeight = '80%';
+            }
+            
+            wrapper.style.width = finalWidth;
+            wrapper.style.height = finalHeight;
+            
+            // Fullscreen override if the original size was 100%x100%
+            if (size === '100%x100%') {
+                wrapper.style.width = '100vw';
+                wrapper.style.height = '100vh';
+                document.body.style.padding = '0';
+                wrapper.style.borderRadius = '0';
+            }
+
+
+            // Positioning
+            document.body.style.display = 'flex';
+            const position = ad.ad_position || 'center';
+            switch (position) {
+                case 'top-left':
+                    document.body.style.justifyContent = 'flex-start'; document.body.style.alignItems = 'flex-start'; break;
+                case 'top-right':
+                    document.body.style.justifyContent = 'flex-end'; document.body.style.alignItems = 'flex-start'; break;
+                case 'bottom-left':
+                    document.body.style.justifyContent = 'flex-start'; document.body.style.alignItems = 'flex-end'; break;
+                case 'bottom-right':
+                    document.body.style.justifyContent = 'flex-end'; document.body.style.alignItems = 'flex-end'; break;
+                case 'center': default:
+                    document.body.style.justifyContent = 'center'; document.body.style.alignItems = 'center'; break;
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Remote Control Settings</title>
+    <style>
+        :root { --bg-color: #0d1b2a; --text-color: #e0e1dd; --accent-color: #00bfff; --card-bg: rgba(255, 255, 255, 0.05); --border-color: rgba(255, 255, 255, 0.2); --focus-shadow: 0 0 15px rgba(0, 191, 255, 0.6); }
+        * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; outline: none; }
+        body { background: var(--bg-color); color: var(--text-color); font-family: 'Segoe UI', Arial, sans-serif; padding: 40px; }
+        h1 { font-weight: 300; color: var(--accent-color); border-bottom: 1px solid var(--border-color); padding-bottom: 10px; margin-bottom: 20px; }
+        .container { display: grid; grid-template-columns: 1fr; gap: 20px; }
+        .mapping-card { background: var(--card-bg); padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
+        .key-name { font-size: 1.2em; }
+        .listener-name { font-size: 1em; color: var(--accent-color); }
+        .home-link { position: fixed; top: 20px; left: 20px; color: #fff; text-decoration: none; font-size: 18px; background: rgba(255,255,255,0.1); padding: 8px 15px; border-radius: 8px; transition: 0.2s; z-index: 10; }
+        .home-link:hover { background: rgba(0, 255, 255, 0.2); }
+        #message-area { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: #333; color: white; padding: 15px 30px; border-radius: 8px; display: none; z-index: 100; text-align: center; }
+        #message-area.success { background: #2ecc71; color: black;}
+        #message-area.error { background: #e74c3c; }
+        .nav-item { border: 2px solid transparent; border-radius: 8px; transition: all 0.2s ease; cursor: pointer; }
+        .nav-item.focused { border-color: var(--accent-color); box-shadow: var(--focus-shadow); background: rgba(0, 191, 255, 0.1); }
+        #firebase-status { margin-bottom: 20px; padding: 15px; border-radius: 8px; text-align: center; }
+        #firebase-status.connected { background: #27ae60; color: white; }
+        #firebase-status.disconnected { background: #c0392b; color: white; }
+    </style>
+</head>
+<body>
+    <a href="/settings" class="home-link">Back to Settings</a>
+    <h1>Remote Control Key Mapping</h1>
+    <div id="firebase-status">Checking Firebase connection...</div>
+    <div class="container" id="key-mappings"></div>
+    <div id="message-area"></div>
+
+    <script>
+        let focusedIndex = 0;
+        let keyMappings = [];
+
+        function updateFocus() {
+            const items = document.querySelectorAll('.nav-item');
+            items.forEach((item, index) => {
+                item.classList.toggle('focused', index === focusedIndex);
+            });
+        }
+
+        function handleKeyPress(e) {
+            if (e.key === 'F5') {
+                e.preventDefault();
+                location.reload();
+                return;
+            }
+            if (e.key === 'Escape' || e.key === 'Backspace') {
+                e.preventDefault();
+                window.location.href = '/settings';
+                return;
+            }
+            e.preventDefault();
+            const items = document.querySelectorAll('.nav-item');
+            switch (e.key) {
+                case 'ArrowDown': focusedIndex = (focusedIndex + 1) % items.length; break;
+                case 'ArrowUp': focusedIndex = (focusedIndex - 1 + items.length) % items.length; break;
+                case 'Enter': items[focusedIndex]?.click(); break;
+            }
+            updateFocus();
+        }
+
+        function showMessage(text, type = 'info') {
+            const msgArea = document.getElementById('message-area');
+            msgArea.textContent = text;
+            msgArea.className = type;
+            msgArea.style.display = 'block';
+            setTimeout(() => { msgArea.style.display = 'none'; }, 4000);
+        }
+
+        async function fetchKeyMappings() {
+            try {
+                const response = await fetch('/api/remote/mappings');
+                keyMappings = await response.json();
+                renderMappings();
+            } catch (error) {
+                showMessage('Error fetching key mappings', 'error');
+                console.error('Error fetching key mappings:', error);
+            }
+        }
+
+        async function checkFirebaseStatus() {
+            const statusDiv = document.getElementById('firebase-status');
+            try {
+                const response = await fetch('/api/firebase/status');
+                const data = await response.json();
+                if (data.connected) {
+                    statusDiv.textContent = `Firebase Connected: ${data.message}`;
+                    statusDiv.className = 'connected';
+                } else {
+                    statusDiv.textContent = `Firebase Disconnected: ${data.message}`;
+                    statusDiv.className = 'disconnected';
+                }
+            } catch (error) {
+                statusDiv.textContent = 'Error checking Firebase status.';
+                statusDiv.className = 'disconnected';
+            }
+        }
+
+        function renderMappings() {
+            const container = document.getElementById('key-mappings');
+            container.innerHTML = '';
+            keyMappings.forEach((mapping, index) => {
+                const card = document.createElement('div');
+                card.className = 'mapping-card nav-item';
+                card.dataset.index = index;
+                card.innerHTML = `
+                    <span class="key-name">${mapping.key}</span>
+                    <span class="listener-name">${mapping.listener}</span>
+                `;
+                container.appendChild(card);
+            });
+            updateFocus();
+        }
+
+        document.addEventListener('keydown', handleKeyPress);
+        checkFirebaseStatus();
+        fetchKeyMappings();
+    </script>
+</body>
+</html>
