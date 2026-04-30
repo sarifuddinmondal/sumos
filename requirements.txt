@@ -1,9 +1,0 @@
-
-flask
-pywebview
-requests
-supabase
-pyautogui
-qrcode
-pillow
-firebase-admin
